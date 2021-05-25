@@ -13,7 +13,9 @@
 #include <utility>
 #include <vector>
 
+#include "db/column_family.h"
 #include "db/multipath.h"
+#include "db/version_edit.h"
 #include "logging/log_buffer.h"
 #include "test_util/sync_point.h"
 
@@ -45,14 +47,12 @@ namespace {
 // A class to build a leveled compaction step-by-step.
 class LevelCompactionBuilder {
  public:
-  LevelCompactionBuilder(const std::string& cf_name,
-                         VersionStorageInfo* vstorage,
-                         SequenceNumber earliest_mem_seqno,
-                         CompactionPicker* compaction_picker,
-                         LogBuffer* log_buffer,
-                         const MutableCFOptions& mutable_cf_options,
-                         const ImmutableCFOptions& ioptions,
-                         const MutableDBOptions& mutable_db_options)
+  LevelCompactionBuilder(
+      const std::string& cf_name, VersionStorageInfo* vstorage,
+      SequenceNumber earliest_mem_seqno, CompactionPicker* compaction_picker,
+      LogBuffer* log_buffer, const MutableCFOptions& mutable_cf_options,
+      const ImmutableCFOptions& ioptions,
+      const MutableDBOptions& mutable_db_options, VersionSet* versions)
       : cf_name_(cf_name),
         vstorage_(vstorage),
         earliest_mem_seqno_(earliest_mem_seqno),
@@ -60,7 +60,8 @@ class LevelCompactionBuilder {
         log_buffer_(log_buffer),
         mutable_cf_options_(mutable_cf_options),
         ioptions_(ioptions),
-        mutable_db_options_(mutable_db_options) {}
+        mutable_db_options_(mutable_db_options),
+        versions_(versions) {}
 
   // Pick and return a compaction.
   Compaction* PickCompaction();
@@ -125,10 +126,16 @@ class LevelCompactionBuilder {
   const MutableCFOptions& mutable_cf_options_;
   const ImmutableCFOptions& ioptions_;
   const MutableDBOptions& mutable_db_options_;
+
+  // colin's Tag
+  VersionSet* versions_;
+
   // Pick a path ID to place a newly generated file, with its level
-  static uint32_t GetPathId(const ImmutableCFOptions& ioptions,
-                            const MutableCFOptions& mutable_cf_options,
-                            int level);
+  // static uint32_t GetPathId(const ImmutableCFOptions& ioptions,
+  //                           const MutableCFOptions& mutable_cf_options,
+  //                           int level);
+  uint32_t GetPathId(const ImmutableCFOptions& ioptions,
+                     const MutableCFOptions& mutable_cf_options, int level);
 
   static const int kMinFilesForIntraL0Compaction = 4;
 };
@@ -326,6 +333,7 @@ Compaction* LevelCompactionBuilder::PickCompaction() {
   return c;
 }
 
+// colin's tag
 Compaction* LevelCompactionBuilder::GetCompaction() {
   auto c = new Compaction(
       vstorage_, ioptions_, mutable_cf_options_, mutable_db_options_,
@@ -414,7 +422,8 @@ Compaction* LevelCompactionBuilder::GetCompaction() {
 uint32_t LevelCompactionBuilder::GetPathId(
     const ImmutableCFOptions& ioptions,
     const MutableCFOptions& mutable_cf_options, int level) {
-  return multipath::RandomPathId(3);
+  return versions_->GetMultiPath().getNext();
+  // return multipath::RandomPathId(3);
 }
 
 bool LevelCompactionBuilder::PickFileToCompact() {
@@ -513,10 +522,11 @@ bool LevelCompactionBuilder::PickIntraL0Compaction() {
 Compaction* LevelCompactionPicker::PickCompaction(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
-    LogBuffer* log_buffer, SequenceNumber earliest_mem_seqno) {
+    LogBuffer* log_buffer, SequenceNumber earliest_mem_seqno,
+    VersionSet* versionset) {
   LevelCompactionBuilder builder(cf_name, vstorage, earliest_mem_seqno, this,
                                  log_buffer, mutable_cf_options, ioptions_,
-                                 mutable_db_options);
+                                 mutable_db_options, versionset);
   return builder.PickCompaction();
 }
 }  // namespace ROCKSDB_NAMESPACE

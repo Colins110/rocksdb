@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <cstdint>
 #include <vector>
 
 #include "db/builder.h"
@@ -190,7 +191,7 @@ void FlushJob::PickMemTable() {
   // meta_.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // colin's Tag
   meta_.fd = FileDescriptor(versions_->NewFileNumber(),
-                            ROCKSDB_NAMESPACE::multipath::RandomPathId(3), 0);
+                            versions_->GetMultiPath().getNext(), 0);
 
   base_ = cfd_->current();
   base_->Ref();  // it is likely that we do not need this reference
@@ -403,6 +404,9 @@ Status FlushJob::WriteLevel0Table() {
       IOStatus io_s;
       const std::string* const full_history_ts_low =
           (full_history_ts_low_.empty()) ? nullptr : &full_history_ts_low_;
+      // colin's tag
+      uint32_t tmp = meta_.fd.GetPathId();
+      versions_->GetMultiPath().add(meta_.fd.GetPathId(), flushProperty, 1);
       s = BuildTable(
           dbname_, versions_, db_options_, *cfd_->ioptions(),
           mutable_cf_options_, file_options_, cfd_->table_cache(), iter.get(),
@@ -416,6 +420,8 @@ Status FlushJob::WriteLevel0Table() {
           job_context_->job_id, Env::IO_HIGH, &table_properties_, 0 /* level */,
           creation_time, oldest_key_time, write_hint, current_time, db_id_,
           db_session_id_, full_history_ts_low, blob_callback_);
+      assert(tmp == meta_.fd.GetPathId());
+      versions_->GetMultiPath().sub(meta_.fd.GetPathId(), flushProperty, 1);
       if (!io_s.ok()) {
         io_status_ = io_s;
       }

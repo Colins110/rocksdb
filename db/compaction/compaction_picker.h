@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "db/compaction/compaction.h"
+#include "db/version_edit.h"
 #include "db/version_set.h"
 #include "options/cf_options.h"
 #include "rocksdb/env.h"
@@ -50,6 +51,7 @@ class CompactionPicker {
                    const InternalKeyComparator* icmp);
   virtual ~CompactionPicker();
 
+  // colin's tag
   // Pick level and inputs for a new compaction.
   // Returns nullptr if there is no compaction to be done.
   // Otherwise returns a pointer to a heap-allocated object that
@@ -58,7 +60,8 @@ class CompactionPicker {
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
       LogBuffer* log_buffer,
-      SequenceNumber earliest_memtable_seqno = kMaxSequenceNumber) = 0;
+      SequenceNumber earliest_memtable_seqno = kMaxSequenceNumber,
+      VersionSet* version = nullptr) = 0;
 
   // Return a compaction object for compacting the range [begin,end] in
   // the specified level.  Returns nullptr if there is nothing in that
@@ -249,13 +252,15 @@ class NullCompactionPicker : public CompactionPicker {
       : CompactionPicker(ioptions, icmp) {}
   virtual ~NullCompactionPicker() {}
 
+  // colin's tag
   // Always return "nullptr"
-  Compaction* PickCompaction(
-      const std::string& /*cf_name*/,
-      const MutableCFOptions& /*mutable_cf_options*/,
-      const MutableDBOptions& /*mutable_db_options*/,
-      VersionStorageInfo* /*vstorage*/, LogBuffer* /* log_buffer */,
-      SequenceNumber /* earliest_memtable_seqno */) override {
+  Compaction* PickCompaction(const std::string& /*cf_name*/,
+                             const MutableCFOptions& /*mutable_cf_options*/,
+                             const MutableDBOptions& /*mutable_db_options*/,
+                             VersionStorageInfo* /*vstorage*/,
+                             LogBuffer* /* log_buffer */,
+                             SequenceNumber /* earliest_memtable_seqno */,
+                             VersionSet*) override {
     return nullptr;
   }
 

@@ -336,37 +336,39 @@ IOStatus DBImpl::CreateAndNewDirectory(
   return fs->NewDirectory(dirname, IOOptions(), directory, nullptr);
 }
 
-IOStatus Directories::SetDirectories(FileSystem* fs, const std::string& dbname,
-                                     const std::string& wal_dir,
-                                     const std::vector<DbPath>& data_paths) {
-  IOStatus io_s = DBImpl::CreateAndNewDirectory(fs, dbname, &db_dir_);
-  if (!io_s.ok()) {
-    return io_s;
-  }
-  if (!wal_dir.empty() && dbname != wal_dir) {
-    io_s = DBImpl::CreateAndNewDirectory(fs, wal_dir, &wal_dir_);
-    if (!io_s.ok()) {
-      return io_s;
-    }
-  }
+// colin's tag
+// IOStatus Directories::SetDirectories(FileSystem* fs, const std::string&
+// dbname,
+//                                      const std::string& wal_dir,
+//                                      const std::vector<DbPath>& data_paths) {
+//   IOStatus io_s = DBImpl::CreateAndNewDirectory(fs, dbname, &db_dir_);
+//   if (!io_s.ok()) {
+//     return io_s;
+//   }
+//   if (!wal_dir.empty() && dbname != wal_dir) {
+//     io_s = DBImpl::CreateAndNewDirectory(fs, wal_dir, &wal_dir_);
+//     if (!io_s.ok()) {
+//       return io_s;
+//     }
+//   }
 
-  data_dirs_.clear();
-  for (auto& p : data_paths) {
-    const std::string db_path = p.path;
-    if (db_path == dbname) {
-      data_dirs_.emplace_back(nullptr);
-    } else {
-      std::unique_ptr<FSDirectory> path_directory;
-      io_s = DBImpl::CreateAndNewDirectory(fs, db_path, &path_directory);
-      if (!io_s.ok()) {
-        return io_s;
-      }
-      data_dirs_.emplace_back(path_directory.release());
-    }
-  }
-  assert(data_dirs_.size() == data_paths.size());
-  return IOStatus::OK();
-}
+//   data_dirs_.clear();
+//   for (auto& p : data_paths) {
+//     const std::string db_path = p.path;
+//     if (db_path == dbname) {
+//       data_dirs_.emplace_back(nullptr);
+//     } else {
+//       std::unique_ptr<FSDirectory> path_directory;
+//       io_s = DBImpl::CreateAndNewDirectory(fs, db_path, &path_directory);
+//       if (!io_s.ok()) {
+//         return io_s;
+//       }
+//       data_dirs_.emplace_back(path_directory.release());
+//     }
+//   }
+//   assert(data_dirs_.size() == data_paths.size());
+//   return IOStatus::OK();
+// }
 
 Status DBImpl::Recover(
     const std::vector<ColumnFamilyDescriptor>& column_families, bool read_only,
@@ -1329,7 +1331,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
   // meta.fd = FileDescriptor(versions_->NewFileNumber(), 0, 0);
   // colin's Tag
   meta.fd = FileDescriptor(versions_->NewFileNumber(),
-                           ROCKSDB_NAMESPACE::multipath::RandomPathId(3), 0);
+                           versions_->GetMultiPath().getNext(), 0);
   ReadOptions ro;
   ro.total_order_seek = true;
   Arena arena;
@@ -1374,6 +1376,8 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
       }
 
       IOStatus io_s;
+      // colin's tag
+      versions_->GetMultiPath().add(meta.fd.GetPathId(), flushProperty, 1);
       s = BuildTable(
           dbname_, versions_.get(), immutable_db_options_, *cfd->ioptions(),
           mutable_cf_options, file_options_for_compaction_, cfd->table_cache(),
@@ -1389,6 +1393,7 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
           0 /* oldest_key_time */, write_hint, 0 /* file_creation_time */,
           db_id_, db_session_id_, nullptr /*full_history_ts_low*/,
           &blob_callback_);
+      versions_->GetMultiPath().sub(meta.fd.GetPathId(), flushProperty, 1);
       LogFlush(immutable_db_options_.info_log);
       ROCKS_LOG_DEBUG(immutable_db_options_.info_log,
                       "[%s] [WriteLevel0TableForRecovery]"

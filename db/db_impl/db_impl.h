@@ -21,6 +21,7 @@
 
 #include "db/column_family.h"
 #include "db/compaction/compaction_job.h"
+#include "db/db_impl/db_impl_directories.h"
 #include "db/dbformat.h"
 #include "db/error_handler.h"
 #include "db/event_helpers.h"
@@ -82,36 +83,36 @@ struct ExternalSstFileInfo;
 struct MemTableInfo;
 
 // Class to maintain directories for all database paths other than main one.
-class Directories {
- public:
-  IOStatus SetDirectories(FileSystem* fs, const std::string& dbname,
-                          const std::string& wal_dir,
-                          const std::vector<DbPath>& data_paths);
+// class Directories {
+//  public:
+//   IOStatus SetDirectories(FileSystem* fs, const std::string& dbname,
+//                           const std::string& wal_dir,
+//                           const std::vector<DbPath>& data_paths);
 
-  FSDirectory* GetDataDir(size_t path_id) const {
-    assert(path_id < data_dirs_.size());
-    FSDirectory* ret_dir = data_dirs_[path_id].get();
-    if (ret_dir == nullptr) {
-      // Should use db_dir_
-      return db_dir_.get();
-    }
-    return ret_dir;
-  }
+//   FSDirectory* GetDataDir(size_t path_id) const {
+//     assert(path_id < data_dirs_.size());
+//     FSDirectory* ret_dir = data_dirs_[path_id].get();
+//     if (ret_dir == nullptr) {
+//       // Should use db_dir_
+//       return db_dir_.get();
+//     }
+//     return ret_dir;
+//   }
 
-  FSDirectory* GetWalDir() {
-    if (wal_dir_) {
-      return wal_dir_.get();
-    }
-    return db_dir_.get();
-  }
+//   FSDirectory* GetWalDir() {
+//     if (wal_dir_) {
+//       return wal_dir_.get();
+//     }
+//     return db_dir_.get();
+//   }
 
-  FSDirectory* GetDbDir() { return db_dir_.get(); }
+//   FSDirectory* GetDbDir() { return db_dir_.get(); }
 
- private:
-  std::unique_ptr<FSDirectory> db_dir_;
-  std::vector<std::unique_ptr<FSDirectory>> data_dirs_;
-  std::unique_ptr<FSDirectory> wal_dir_;
-};
+//  private:
+//   std::unique_ptr<FSDirectory> db_dir_;
+//   std::vector<std::unique_ptr<FSDirectory>> data_dirs_;
+//   std::unique_ptr<FSDirectory> wal_dir_;
+// };
 
 // While DB is the public interface of RocksDB, and DBImpl is the actual
 // class implementing it. It's the entrance of the core RocksdB engine.
@@ -380,8 +381,7 @@ class DBImpl : public DB {
   virtual Status GetSortedWalFiles(VectorLogPtr& files) override;
   virtual Status GetCurrentWalFile(
       std::unique_ptr<LogFile>* current_log_file) override;
-  virtual Status GetCreationTimeOfOldestFile(
-      uint64_t* creation_time) override;
+  virtual Status GetCreationTimeOfOldestFile(uint64_t* creation_time) override;
 
   virtual Status GetUpdatesSince(
       SequenceNumber seq_number, std::unique_ptr<TransactionLogIterator>* iter,

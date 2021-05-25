@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <memory>
@@ -545,13 +546,13 @@ void CompactionJob::GenSubcompactionBoundaries() {
   int base_level = v->storage_info()->base_level();
   uint64_t max_output_files = static_cast<uint64_t>(std::ceil(
       sum / min_file_fill_percent /
-      MaxFileSizeForLevel(*(c->mutable_cf_options()), out_lvl,
+      MaxFileSizeForLevel(
+          *(c->mutable_cf_options()), out_lvl,
           c->immutable_cf_options()->compaction_style, base_level,
           c->immutable_cf_options()->level_compaction_dynamic_level_bytes)));
-  uint64_t subcompactions =
-      std::min({static_cast<uint64_t>(ranges.size()),
-                static_cast<uint64_t>(c->max_subcompactions()),
-                max_output_files});
+  uint64_t subcompactions = std::min(
+      {static_cast<uint64_t>(ranges.size()),
+       static_cast<uint64_t>(c->max_subcompactions()), max_output_files});
 
   if (subcompactions > 1) {
     double mean = sum * 1.0 / subcompactions;
@@ -586,6 +587,20 @@ Status CompactionJob::Run() {
   log_buffer_->FlushBufferToLog();
   LogCompaction();
 
+  // colin's tag
+  std::vector<int> InputNums(versions_->db_options()->db_paths.size(), 0);
+  for (size_t which = 0; which < compact_->compaction->num_input_levels();
+       which++) {
+    const LevelFilesBrief* flevel = compact_->compaction->input_levels(which);
+    for (size_t i = 0; i < flevel->num_files; i++) {
+      InputNums[(flevel->files[i].file_metadata)->fd.GetPathId()]++;
+    }
+  }
+  for (size_t i = 0; i < InputNums.size(); i++) {
+    // colin's tag todo: need change the propertyIndex
+    versions_->GetMultiPath().add(i, ocompaction, InputNums[i]);
+  }
+
   const size_t num_threads = compact_->sub_compact_states.size();
   assert(num_threads > 0);
   const uint64_t start_micros = db_options_.clock->NowMicros();
@@ -605,6 +620,12 @@ Status CompactionJob::Run() {
   // Wait for all other threads (if there are any) to finish execution
   for (auto& thread : thread_pool) {
     thread.join();
+  }
+
+  // colin's tag
+  for (size_t i = 0; i < InputNums.size(); i++) {
+    // colin's tag todo: need change the propertyIndex
+    versions_->GetMultiPath().sub(i, ocompaction, InputNums[i]);
   }
 
   compaction_stats_.micros = db_options_.clock->NowMicros() - start_micros;
@@ -643,10 +664,19 @@ Status CompactionJob::Run() {
   if (status.ok()) {
     constexpr IODebugContext* dbg = nullptr;
 
-    if (output_directory_) {
-      io_s = output_directory_->Fsync(IOOptions(), dbg);
+    // if (output_directory_) {
+    //   io_s = output_directory_->Fsync(IOOptions(), dbg);
+    // }
+
+    // colin's tag
+    for (auto& i : FSDirs_) {
+      io_s = i.second->Fsync(IOOptions(), dbg);
+      if (!io_s.ok()) {
+        break;
+      }
     }
 
+    // colin's tag ignore we don't use blob
     if (io_s.ok() && wrote_new_blob_files && blob_output_directory_ &&
         blob_output_directory_ != output_directory_) {
       io_s = blob_output_directory_->Fsync(IOOptions(), dbg);
@@ -677,11 +707,12 @@ Status CompactionJob::Run() {
           break;
         }
         // Verify that the table is usable
-        // We set for_compaction to false and don't OptimizeForCompactionTableRead
-        // here because this is a special case after we finish the table building
-        // No matter whether use_direct_io_for_flush_and_compaction is true,
-        // we will regard this verification as user reads since the goal is
-        // to cache it here for further user reads
+        // We set for_compaction to false and don't
+        // OptimizeForCompactionTableRead here because this is a special case
+        // after we finish the table building No matter whether
+        // use_direct_io_for_flush_and_compaction is true, we will regard this
+        // verification as user reads since the goal is to cache it here for
+        // further user reads
         ReadOptions read_options;
         InternalIterator* iter = cfd->table_cache()->NewIterator(
             read_options, file_options_, cfd->internal_comparator(),
@@ -727,8 +758,8 @@ Status CompactionJob::Run() {
       }
     };
     for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
-      thread_pool.emplace_back(verify_table,
-                               std::ref(compact_->sub_compact_states[i].status));
+      thread_pool.emplace_back(
+          verify_table, std::ref(compact_->sub_compact_states[i].status));
     }
     verify_table(compact_->sub_compact_states[0].status);
     for (auto& thread : thread_pool) {
@@ -1350,9 +1381,8 @@ Status CompactionJob::FinishCompactionOutputFile(
     // bound. If the end of subcompaction is null or the upper bound is null,
     // it means that this file is the last file in the compaction. So there
     // will be no overlapping between this file and others.
-    assert(sub_compact->end == nullptr ||
-           upper_bound == nullptr ||
-           ucmp->Compare(*upper_bound , *sub_compact->end) <= 0);
+    assert(sub_compact->end == nullptr || upper_bound == nullptr ||
+           ucmp->Compare(*upper_bound, *sub_compact->end) <= 0);
     auto it = range_del_agg->NewIterator(lower_bound, upper_bound,
                                          has_overlapping_endpoints);
     // Position the range tombstone output iterator. There may be tombstone
@@ -1464,6 +1494,9 @@ Status CompactionJob::FinishCompactionOutputFile(
   } else {
     sub_compact->builder->Abandon();
   }
+  // colin's tag
+  versions_->GetMultiPath().sub(
+      sub_compact->current_output()->meta.fd.GetPathId(), ocompaction, 1);
   IOStatus io_s = sub_compact->builder->io_status();
   if (s.ok()) {
     s = io_s;
@@ -1672,9 +1705,14 @@ Status CompactionJob::OpenCompactionOutputFile(
   assert(sub_compact->builder == nullptr);
   // no need to lock because VersionSet::next_file_number_ is atomic
   uint64_t file_number = versions_->NewFileNumber();
+  // std::string fname =
+  //     TableFileName(sub_compact->compaction->immutable_cf_options()->cf_paths,
+  //                   file_number, sub_compact->compaction->output_path_id());
+  // colin's tag
+  int pathId = versions_->GetMultiPath().getNext();
   std::string fname =
       TableFileName(sub_compact->compaction->immutable_cf_options()->cf_paths,
-                    file_number, sub_compact->compaction->output_path_id());
+                    file_number, pathId);
   // Fire events.
   ColumnFamilyData* cfd = sub_compact->compaction->column_family_data();
 #ifndef ROCKSDB_LITE
@@ -1734,8 +1772,9 @@ Status CompactionJob::OpenCompactionOutputFile(
   // Initialize a SubcompactionState::Output and add it to sub_compact->outputs
   {
     FileMetaData meta;
-    meta.fd = FileDescriptor(file_number,
-                             sub_compact->compaction->output_path_id(), 0);
+    // meta.fd = FileDescriptor(file_number,
+    //                          sub_compact->compaction->output_path_id(), 0);
+    meta.fd = FileDescriptor(file_number, pathId, 0);
     meta.oldest_ancester_time = oldest_ancester_time;
     meta.file_creation_time = current_time;
     sub_compact->outputs.emplace_back(
@@ -1775,6 +1814,11 @@ Status CompactionJob::OpenCompactionOutputFile(
       oldest_ancester_time, 0 /* oldest_key_time */,
       sub_compact->compaction->max_output_file_size(), current_time, db_id_,
       db_session_id_));
+  // colin's tag
+  versions_->GetMultiPath().add(pathId, ocompaction, 1);
+  if (FSDirs_.find(pathId) == FSDirs_.end()) {
+    FSDirs_.insert({pathId, versions_->GetDirectories()->GetDataDir(pathId)});
+  }
   LogFlush(db_options_.info_log);
   return s;
 }

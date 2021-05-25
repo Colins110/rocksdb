@@ -13,6 +13,7 @@
 #include <cinttypes>
 #include <string>
 #include <vector>
+
 #include "db/column_family.h"
 #include "logging/log_buffer.h"
 #include "util/string_util.h"
@@ -210,10 +211,12 @@ Compaction* FIFOCompactionPicker::PickSizeCompaction(
   return c;
 }
 
+// colin's tag
 Compaction* FIFOCompactionPicker::PickCompaction(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
-    LogBuffer* log_buffer, SequenceNumber /*earliest_memtable_seqno*/) {
+    LogBuffer* log_buffer, SequenceNumber /*earliest_memtable_seqno*/,
+    VersionSet*) {
   assert(vstorage->num_levels() == 1);
 
   Compaction* c = nullptr;

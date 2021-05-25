@@ -12,8 +12,11 @@
 #include <deque>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -136,13 +139,13 @@ class CompactionJob {
   Status OpenCompactionOutputFile(SubcompactionState* sub_compact);
   void CleanupCompaction();
   void UpdateCompactionJobStats(
-    const InternalStats::CompactionStats& stats) const;
+      const InternalStats::CompactionStats& stats) const;
   void RecordDroppedKeys(const CompactionIterationStats& c_iter_stats,
                          CompactionJobStats* compaction_job_stats = nullptr);
 
   void UpdateCompactionStats();
-  void UpdateCompactionInputStatsHelper(
-      int* num_files, uint64_t* bytes_read, int input_level);
+  void UpdateCompactionInputStatsHelper(int* num_files, uint64_t* bytes_read,
+                                        int input_level);
 
   void LogCompaction();
 
@@ -207,6 +210,7 @@ class CompactionJob {
   IOStatus io_status_;
   std::string full_history_ts_low_;
   BlobFileCompletionCallback* blob_callback_;
+  std::unordered_map<int, FSDirectory*> FSDirs_;
 };
 
 }  // namespace ROCKSDB_NAMESPACE

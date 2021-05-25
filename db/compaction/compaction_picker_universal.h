@@ -18,11 +18,13 @@ class UniversalCompactionPicker : public CompactionPicker {
   UniversalCompactionPicker(const ImmutableCFOptions& ioptions,
                             const InternalKeyComparator* icmp)
       : CompactionPicker(ioptions, icmp) {}
+  // colin's tag
   virtual Compaction* PickCompaction(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       const MutableDBOptions& mutable_db_options, VersionStorageInfo* vstorage,
       LogBuffer* log_buffer,
-      SequenceNumber earliest_memtable_seqno = kMaxSequenceNumber) override;
+      SequenceNumber earliest_memtable_seqno = kMaxSequenceNumber,
+      VersionSet* versionset = nullptr) override;
   virtual int MaxOutputLevel() const override { return NumberLevels() - 1; }
 
   virtual bool NeedsCompaction(

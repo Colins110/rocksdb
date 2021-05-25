@@ -424,9 +424,8 @@ class Repairer {
       FileMetaData meta;
       // meta.fd = FileDescriptor(next_file_number_++, 0, 0);
       // colin's Tag
-      meta.fd =
-          FileDescriptor(next_file_number_++,
-                         ROCKSDB_NAMESPACE::multipath::RandomPathId(3), 0);
+      meta.fd = FileDescriptor(next_file_number_++,
+                               vset_.GetMultiPath().getNext(), 0);
       ReadOptions ro;
       ro.total_order_seek = true;
       Arena arena;
@@ -447,6 +446,8 @@ class Repairer {
       }
 
       IOStatus io_s;
+      // colin's tag
+      vset_.GetMultiPath().add(meta.fd.GetPathId(), flushProperty, 1);
       status = BuildTable(
           dbname_, /* versions */ nullptr, immutable_db_options_,
           *cfd->ioptions(), *cfd->GetLatestMutableCFOptions(), env_options_,
@@ -460,6 +461,7 @@ class Repairer {
           nullptr /* table_properties */, -1 /* level */, current_time,
           0 /* oldest_key_time */, write_hint, 0 /* file_creation_time */,
           "DB Repairer" /* db_id */, db_session_id_);
+      vset_.GetMultiPath().sub(meta.fd.GetPathId(), flushProperty, 1);
       ROCKS_LOG_INFO(db_options_.info_log,
                      "Log #%" PRIu64 ": %d ops saved to Table #%" PRIu64 " %s",
                      log, counter, meta.fd.GetNumber(),
