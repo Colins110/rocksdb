@@ -1446,6 +1446,8 @@ Status DBImpl::WriteLevel0TableForRecovery(int job_id, ColumnFamilyData* cfd,
 }
 
 Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
+  // colin's tag 初始化随机数
+  srandom(time(0));
   DBOptions db_options(options);
   ColumnFamilyOptions cf_options(options);
   std::vector<ColumnFamilyDescriptor> column_families;
